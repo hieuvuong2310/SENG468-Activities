@@ -11,11 +11,13 @@ const inventory = {
 };
 
 app.get("/check-availability", (req, res) => {
-  const { itemId } = req.body;
-  console.log("itemId", itemId);
+  const { itemId } = req.query;
   const available = inventory[itemId] || false;
-  console.log("available", available);
-  res.status(200).json({ available });
+  if (itemId in inventory) {
+    return res.status(200).json({ available });
+  } else {
+    return res.status(400).json({ message: "Item is not in inventory list" });
+  }
 });
 
 app.listen(PORT, () => {

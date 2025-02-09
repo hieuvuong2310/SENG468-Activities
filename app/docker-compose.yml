@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  cart-service:
+    build:
+      context: ./cart-service
+    ports:
+      - "3000:3000"
+    depends_on:
+      - inventory-service
+
+  inventory-service:
+    build:
+      context: ./inventory-service
+    ports:
+      - "4000:4000"

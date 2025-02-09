@@ -12,7 +12,12 @@ app.post("/add-to-cart", async (req, res) => {
 
   try {
     const response = await axios.get(
-      `http://localhost:4000/check-availability?itemdId=${itemId}`
+      `http://inventory-service:4000/check-availability`,
+      {
+        params: {
+          itemId: itemId,
+        },
+      }
     );
     console.log("response", response.data);
     if (response.data.available) {
