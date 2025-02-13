@@ -1,6 +1,23 @@
 version: "3.9"
 
 services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # RabbitMQ
+      - "15672:15672" # RabbitMQ management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
   api-gateway:
     image: nginx:latest
     container_name: api-gateway
@@ -22,6 +39,9 @@ services:
       - "3000:3000"
     depends_on:
       - inventory-service
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq
     networks:
       - backend
 
@@ -31,6 +51,10 @@ services:
     container_name: inventory-service
     ports:
       - "4000:4000"
+    depends_on:
+      - rabbitmq
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq
     networks:
       - backend
 
