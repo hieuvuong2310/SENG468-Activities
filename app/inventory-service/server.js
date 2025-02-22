@@ -27,7 +27,7 @@ function randomDelay() {
 
 // Function to simulate random failures
 function randomFailure() {
-  return Math.random() < 1; // 100% chance of failure
+  return Math.random() < 0.5; // 100% chance of failure
 }
 
 // Function to send order confirmation back to Cart Service
