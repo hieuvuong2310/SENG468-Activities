@@ -6,9 +6,9 @@ app.use(express.json());
 
 const PORT = 4000;
 const RABBITMQ_URL = "amqp://rabbitmq";
-const QUEUE_NAME = "inventory_queue";
+const INVENTORY_QUEUE = "inventory_queue";
+const CART_UPDATE_QUEUE = "cart_updates"; // New queue for order confirmations
 const EXCHANGE_NAME = "stock_exchange";
-const ROUTING_KEY = "stock.update";
 
 const inventory = {
   item1: 10,
@@ -17,92 +17,89 @@ const inventory = {
 
 let channel, connection;
 
-// Function to publish stock updates
-async function publishStockUpdate(item_id, available) {
+// Function to send order confirmation back to Cart Service
+async function sendOrderConfirmation(itemId, success, remaining_stock) {
   try {
     if (!channel) {
-      console.error("❌ Cannot publish - RabbitMQ channel is not connected!");
+      console.error(
+        "❌ Cannot send confirmation - RabbitMQ channel is not connected!"
+      );
       return;
     }
 
-    const message = JSON.stringify({ item_id, available });
-    channel.publish(EXCHANGE_NAME, ROUTING_KEY, Buffer.from(message));
-    console.log(`📢 Published stock update: ${message}`);
+    const message = JSON.stringify({ itemId, success, remaining_stock });
+    channel.sendToQueue(CART_UPDATE_QUEUE, Buffer.from(message), {
+      persistent: true, // Ensures durability
+    });
+    console.log(`📢 Sent order confirmation: ${message}`);
+
   } catch (error) {
-    console.error("❌ Error publishing stock update:", error);
+    console.error("❌ Error sending order confirmation:", error);
   }
 }
 
+// Function to process orders
+async function processOrder(msg) {
+  if (!msg) return;
+
+  console.log("📩 Received order request:", msg.content.toString());
+  const { itemId, quantity } = JSON.parse(msg.content.toString());
+
+  if (inventory[itemId] === undefined) {
+    console.error(`❌ Item ${itemId} not found in inventory.`);
+    await sendOrderConfirmation(itemId, false, 0);
+    channel.ack(msg); // ✅ Ensure the message is acknowledged
+    return;
+  }
+
+  if (inventory[itemId] >= quantity) {
+    inventory[itemId] -= quantity;
+    console.log(`✅ Stock updated: ${itemId} → ${inventory[itemId]} left`);
+    await sendOrderConfirmation(itemId, true, inventory[itemId]);
+  } else {
+    console.error(
+      `❌ Not enough stock for ${itemId}. Requested: ${quantity}, Available: ${inventory[itemId]}`
+    );
+    await sendOrderConfirmation(itemId, false, inventory[itemId]);
+  }
+
+  channel.ack(msg); // ✅ Ensure the message is acknowledged in all cases
+}
+
+
 // Function to connect to RabbitMQ
-async function connectRabbitMQ() {
-  let retries = 3;
+async function connectRabbitMQ(retries = 3) {
   while (retries > 0) {
     try {
       console.log("🔄 Connecting to RabbitMQ...");
       connection = await amqp.connect(RABBITMQ_URL);
       channel = await connection.createChannel();
+      console.log("Delete the queue");
+      // await channel.deleteQueue(INVENTORY_QUEUE);
+      console.log("✅ Queue deleted successfully!");
 
-      await channel.assertQueue(QUEUE_NAME, { durable: true });
-      await channel.assertExchange(EXCHANGE_NAME, "topic", { durable: false });
+      await channel.assertQueue(INVENTORY_QUEUE, { durable: true });
+      await channel.assertQueue(CART_UPDATE_QUEUE, { durable: true });
 
-      console.log(`✅ Listening for messages on ${QUEUE_NAME}...`);
+      console.log("✅ Inventory Service connected to RabbitMQ!");
 
-      channel.consume(QUEUE_NAME, async (msg) => {
-        if (msg) {
-          console.log("📩 Received message:", msg.content.toString());
-          const { item_id, quantity } = JSON.parse(msg.content.toString());
-
-          if (inventory[item_id] !== undefined) {
-            if (inventory[item_id] >= quantity) {
-              inventory[item_id] -= quantity;
-              console.log(
-                `✅ Stock updated: ${item_id} → ${inventory[item_id]} left`
-              );
-              await publishStockUpdate(item_id, inventory[item_id] > 0);
-            } else {
-              console.error(
-                `❌ Not enough stock for ${item_id}. Requested: ${quantity}, Available: ${inventory[item_id]}`
-              );
-            }
-          } else {
-            console.error(`❌ Item ${item_id} not found in inventory.`);
-          }
-
-          channel.ack(msg);
-        }
-      });
-
-      console.log("✅ Inventory Service connected to RabbitMQ.");
-      return;
+      // Listen for incoming order requests
+      channel.consume(INVENTORY_QUEUE, msg => processOrder(msg));
+      return; // Exit the function if connection is successful
     } catch (error) {
-      console.error("❌ RabbitMQ connection error:", error);
+      console.error("❌ RabbitMQ Connection Error:", error);
       retries -= 1;
       console.log(`Retries left: ${retries}`);
       if (retries === 0) {
-        console.error(
-          "❌ Failed to connect to RabbitMQ after multiple attempts."
-        );
-        process.exit(1);
+        console.error("Failed to connect to RabbitMQ after multiple attempts.");
+        process.exit(1); // Exit the process if unable to connect
       }
-      await new Promise((res) => setTimeout(res, 5000)); // Wait before retrying
+      await new Promise((res) => setTimeout(res, 5000)); // Wait for 5 seconds before retrying
     }
   }
 }
 
-// API route to check item availability
-app.get("/check-availability", (req, res) => {
-  const { itemId } = req.query;
-  const available = inventory[itemId] > 0;
-  if (itemId in inventory) {
-    return res.status(200).json({ itemId, available });
-  } else {
-    return res
-      .status(400)
-      .json({ message: "❌ Item is not in inventory list or out of stock" });
-  }
-});
-
-// Start server and connect to RabbitMQ
+// Start the Inventory Service
 app.listen(PORT, () => {
   console.log(`🚀 Inventory Service running on port ${PORT}`);
   connectRabbitMQ();
