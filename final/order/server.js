@@ -1,55 +1,41 @@
 const express = require("express");
-const axios = require("axios");
+const amqp = require("amqplib");
 const app = express();
+const { v4: uuidv4 } = require("uuid");
 app.use(express.json());
 
 const PORT = 3000;
+const QUEUE_NAME = "order.created";
 
-const PRODUCT_SERVICE_URL = "http://api-gateway:8080/api/product";
-const PAYMENT_SERVICE_URL = "http://api-gateway:8080/api/payment";
+let channel;
 
 const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
+async function connectRabbitMQ() {
+  const connection = await amqp.connect({
+    protocol: "amqp",
+    hostname: "rabbitmq",
+    port: 5672,
+    username: "admin",
+    password: "admin",
+    vhost: "/",
+  });
+  channel = await connection.createChannel();
+  await channel.assertQueue(QUEUE_NAME);
+  log("📡 Connected to RabbitMQ");
+}
+
 app.post("/placeOrder", async (req, res) => {
-  const { productId } = req.body;
-  log(`📦 [ORDER SERVICE] Received order request for product ${productId}`);
+  const { amount } = req.body;
+  const orderId = uuidv4();
+  const event = { orderId, amount };
 
-  try {
-    // Step 1: Check inventory
-    log(`🔍 [ORDER SERVICE] Checking inventory for product ${productId}`);
-    const invRes = await axios.get(`${PRODUCT_SERVICE_URL}/check`, {
-      params: { productId },
-    });
-
-    if (!invRes.data.available) {
-      log("❌ [ORDER SERVICE] Product not available");
-      return res.status(400).send("Product out of stock.");
-    }
-
-    // Step 2: Record order (mock)
-    log(
-      `📝 [ORDER SERVICE] Product available. Recording order for ${productId}`
-    );
-
-    // Step 3: Process payment
-    log(`💰 [ORDER SERVICE] Requesting payment for product ${productId}`);
-    const paymentRes = await axios.post(`${PAYMENT_SERVICE_URL}/pay`, {
-      amount: 25, // example
-    });
-
-    if (paymentRes.data.status === "paid") {
-      log("✅ [ORDER SERVICE] Order placed and payment successful");
-      res.status(200).send("Order completed.");
-    } else {
-      log("❌ [ORDER SERVICE] Payment failed");
-      res.status(500).send("Payment failed.");
-    }
-  } catch (err) {
-    log(`🔴 [ORDER SERVICE] Error occurred: ${err.message}`);
-    res.status(500).send("Order failed.");
-  }
+  log(`📨 Emitting event to ${QUEUE_NAME}: ${JSON.stringify(event)}`);
+  channel.sendToQueue(QUEUE_NAME, Buffer.from(JSON.stringify(event)));
+  res.send("Order created and event emitted.");
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 [OrderService] running on port ${PORT}`);
+app.listen(PORT, async () => {
+  await connectRabbitMQ();
+  console.log(`🚀 OrderService running on port ${PORT}`);
 });

@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "amqplib": "^0.10.7",
     "express": "^5.1.0",
     "nodemon": "^3.1.9"
   }
