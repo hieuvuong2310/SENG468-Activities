@@ -4,14 +4,15 @@ app.use(express.json());
 
 const PORT = 3002;
 
-app.get("/", (req, res) => {
-    res.send("Order Service is running!");
+app.get("/check", (req, res) => {
+  const productId = req.query.productId;
+  const available = productId === "1"; // simulate one available product
+  console.log(
+    `[${new Date().toISOString()}] 🔍 Inventory check for ${productId}: ${available}`
+  );
+  res.json({ available });
 });
 
-app.get("/health", (req, res) => {
-    res.status(200).json({ status: "UP" });
-});
-
-app.listen(PORT, async () => {
-  console.log(`🚀 Product Service running on port ${PORT}`);
+app.listen(PORT, () => {
+  console.log(`🚀 [ProductService] running on port ${PORT}`);
 });
