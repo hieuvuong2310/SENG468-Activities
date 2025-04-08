@@ -11,6 +11,16 @@ let channel;
 
 const log = (msg) => console.log(`[${new Date().toISOString()}] ${msg}`);
 
+const mongoose = require("mongoose");
+
+const mongoUri =
+  "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/mydb?replicaSet=rs0";
+
+mongoose.connect(mongoUri, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
 async function connectRabbitMQ() {
   const connection = await amqp.connect({
     protocol: "amqp",
