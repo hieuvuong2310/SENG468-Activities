@@ -53,7 +53,7 @@ app.post("/", async (req, res) => {
 
     const results = await Promise.all([
       axios.post(`${ORDER_SERVICE_URL}/prepare`), // OrderService itself
-      axios.post(`${PAYMENT_SERVICE_URL}/prepare`),
+      axios.post(`${PAYMENT_SERVICE_URL}/prepare`, {}, { timeout: 50 }),
     ]);
 
     if (!results.every(r => r.data.status === "ready")) {

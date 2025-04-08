@@ -14,9 +14,13 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "UP" });
 });
 
-app.post("/prepare", (req, res) => {
+app.post("/prepare", async (req, res) => {
+  const delay = Math.floor(Math.random() * 3000) + 3000; // 3000–6000ms (3–6s)
+  console.log(`🕒 [Payment Service] Simulating delay of ${delay}ms...`);
+
+  await new Promise((resolve) => setTimeout(resolve, delay)); // simulate delay
+
   console.log("🟡 [Payment Service] Received prepare request");
-  // Simulate being ready
   state = "prepared";
   res.status(200).json({ status: "ready" });
 });
