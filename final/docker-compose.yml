@@ -75,38 +75,53 @@ services:
       timeout: 30s
       retries: 5
 
-  mongo1:
+  configsvr:
     image: mongo:6
-    container_name: mongo1
+    container_name: configsvr
+    command: ["mongod", "--configsvr", "--replSet", "configReplSet", "--port", "27017"]
     ports:
-      - "27017:27017"
+      - 27017:27017
     volumes:
-      - mongo1_data:/data/db
-    command: ["mongod", "--replSet", "rs0"]
+      - config_data:/data/db
 
-  mongo2:
+  shard1:
     image: mongo:6
-    container_name: mongo2
+    container_name: shard1
+    command: ["mongod", "--shardsvr", "--replSet", "shardReplSet1", "--port", "27018"]
     ports:
-      - "27018:27017"
+      - 27018:27018
     volumes:
-      - mongo2_data:/data/db
-    command: ["mongod", "--replSet", "rs0"]
+      - shard1_data:/data/db
 
-  mongo3:
+  shard2:
     image: mongo:6
-    container_name: mongo3
+    container_name: shard2
+    command: ["mongod", "--shardsvr", "--replSet", "shardReplSet2", "--port", "27019"]
     ports:
-      - "27019:27017"
+      - 27019:27019
     volumes:
-      - mongo3_data:/data/db
-    command: ["mongod", "--replSet", "rs0"]
+      - shard2_data:/data/db
+
+  mongos:
+    image: mongo:6
+    container_name: mongos
+    depends_on:
+      - configsvr
+      - shard1
+      - shard2
+    command: >
+      bash -c "
+      sleep 10 &&
+      mongos --configdb configReplSet/configsvr:27017 --bind_ip_all
+      "
+    ports:
+      - 27020:27017
 
 volumes:
-  mongo1_data:
-  mongo2_data:
-  mongo3_data:
-  
+  config_data:
+  shard1_data:
+  shard2_data:
+
 networks:
   backend:
     driver: bridge
