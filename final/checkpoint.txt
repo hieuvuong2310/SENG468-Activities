@@ -1,0 +1,460 @@
+Student ID: V00971074
+Start Time: 2025-04-08 14:00
+
+[2PC]
+Prepare phase logs – OrderService and PaymentService
+Commit/Abort result
+Delay simulation: yes
+2025-04-08 14:45:08 order        | 🔄 Starting 2PC transaction...
+2025-04-08 14:45:08 order        | 🟡 Phase 1: Sending prepare to both services...
+2025-04-08 14:45:08 order        | 🟡 [OrderService] Received prepare
+2025-04-08 14:45:08 api-gateway  | 172.18.0.2 - - [08/Apr/2025:21:45:08 +0000] "POST /api/order/prepare HTTP/1.1" 200 18 "-" "axios/1.8.4"
+2025-04-08 14:45:08 payment      | 🕒 [Payment Service] Simulating delay of 4168ms...
+2025-04-08 14:45:08 order        | 🔴 [Order Service] Error or abort received. Sending abort...
+2025-04-08 14:45:08 api-gateway  | 172.18.0.2 - - [08/Apr/2025:21:45:08 +0000] "POST /api/payment/prepare HTTP/1.1" 499 0 "-" "axios/1.8.4"
+2025-04-08 14:45:08 order        | ❌ [OrderService] Aborted
+2025-04-08 14:45:08 payment      | ❌ [Payment Service] Abort received but not in prepared state
+2025-04-08 14:45:08 api-gateway  | 172.18.0.2 - - [08/Apr/2025:21:45:08 +0000] "POST /api/order/abort HTTP/1.1" 200 20 "-" "axios/1.8.4"
+2025-04-08 14:45:08 api-gateway  | 172.18.0.2 - - [08/Apr/2025:21:45:08 +0000] "POST /api/payment/abort HTTP/1.1" 200 20 "-" "axios/1.8.4"
+2025-04-08 14:45:08 order        | ❌ Transaction aborted
+2025-04-08 14:45:08 api-gateway  | 172.18.0.1 - - [08/Apr/2025:21:45:08 +0000] "POST /api/order/ HTTP/1.1" 500 32 "-" "PostmanRuntime/7.43.3"
+2025-04-08 14:45:12 payment      | 🟡 [Payment Service] Received prepare request
+
+
+[Orchestration]
+Timestamped calls from OrderService to ProductService and PaymentService
+2025-04-08 15:45:32 order        | [2025-04-08T22:45:32.400Z] 📦 [ORDER SERVICE] Received order request for product 1
+2025-04-08 15:45:32 order        | [2025-04-08T22:45:32.401Z] 🔍 [ORDER SERVICE] Checking inventory for product 1
+2025-04-08 15:45:32 product      | [2025-04-08T22:45:32.430Z] 🔍 Inventory check for 1: true
+2025-04-08 15:45:32 api-gateway  | 172.18.0.2 - - [08/Apr/2025:22:45:32 +0000] "GET /api/product/check?productId=1 HTTP/1.1" 200 18 "-" "axios/1.8.4"
+2025-04-08 15:45:32 order        | [2025-04-08T22:45:32.438Z] 📝 [ORDER SERVICE] Product available. Recording order for 1
+2025-04-08 15:45:32 order        | [2025-04-08T22:45:32.438Z] 💰 [ORDER SERVICE] Requesting payment for product 1
+2025-04-08 15:45:32 payment      | [2025-04-08T22:45:32.453Z] 💰 Payment request received: $25
+2025-04-08 15:45:32 api-gateway  | 172.18.0.2 - - [08/Apr/2025:22:45:32 +0000] "POST /api/payment/pay HTTP/1.1" 200 17 "-" "axios/1.8.4"
+2025-04-08 15:45:32 order        | [2025-04-08T22:45:32.459Z] ✅ [ORDER SERVICE] Order placed and payment successful
+2025-04-08 15:45:32 api-gateway  | 172.18.0.1 - - [08/Apr/2025:22:45:32 +0000] "POST /api/order/placeOrder HTTP/1.1" 200 16 "-" "PostmanRuntime/7.43.3"
+
+
+[Choreography]
+Event emitted: OrderCreated
+PaymentService and ShippingService received and acted on event
+2025-04-08 16:09:59 order        | [2025-04-08T23:09:59.989Z] 📨 Emitting event to order.created: {"orderId":"d757a095-19cd-477b-a154-caf58690a614","amount":"1"}
+2025-04-08 16:09:59 api-gateway  | 172.26.0.1 - - [08/Apr/2025:23:09:59 +0000] "POST /api/order/placeOrder HTTP/1.1" 200 32 "-" "PostmanRuntime/7.43.3"
+2025-04-08 16:10:00 payment      | [2025-04-08T23:10:00.003Z] 💳 Processing payment for order d757a095-19cd-477b-a154-caf58690a614 - $1
+
+[Replica Set]
+rs.status() output
+Failover: primary = node1 → node2
+
+rs0 [direct: other] test> rs.status()
+... 
+{
+  set: 'rs0',
+  date: ISODate('2025-04-08T23:19:15.710Z'),
+  myState: 2,
+  term: Long('0'),
+  syncSourceHost: '',
+  syncSourceId: -1,
+  heartbeatIntervalMillis: Long('2000'),
+  majorityVoteCount: 2,
+  writeMajorityCount: 2,
+  votingMembersCount: 3,
+  writableVotingMembersCount: 3,
+  optimes: {
+    lastCommittedOpTime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+    lastCommittedWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+    readConcernMajorityOpTime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+    appliedOpTime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+    durableOpTime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+    lastAppliedWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+    lastDurableWallTime: ISODate('2025-04-08T23:19:08.497Z')
+  },
+  lastStableRecoveryTimestamp: Timestamp({ t: 1744154348, i: 1 }),
+  members: [
+    {
+      _id: 0,
+      name: 'mongo1:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 171,
+      optime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+      optimeDate: ISODate('2025-04-08T23:19:08.000Z'),
+      lastAppliedWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+      lastDurableWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+      syncSourceHost: '',
+      syncSourceId: -1,
+      infoMessage: '',
+      configVersion: 1,
+      configTerm: 0,
+      self: true,
+      lastHeartbeatMessage: ''
+    },
+    {
+      _id: 1,
+      name: 'mongo2:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 7,
+      optime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+      optimeDurable: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+      optimeDate: ISODate('2025-04-08T23:19:08.000Z'),
+      optimeDurableDate: ISODate('2025-04-08T23:19:08.000Z'),
+      lastAppliedWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+      lastDurableWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+      lastHeartbeat: ISODate('2025-04-08T23:19:15.573Z'),
+      lastHeartbeatRecv: ISODate('2025-04-08T23:19:15.680Z'),
+      pingMs: Long('0'),
+      lastHeartbeatMessage: '',
+      syncSourceHost: '',
+      syncSourceId: -1,
+      infoMessage: '',
+      configVersion: 1,
+      configTerm: 0
+    },
+    {
+      _id: 2,
+      name: 'mongo3:27017',
+      health: 1,
+      state: 2,
+      stateStr: 'SECONDARY',
+      uptime: 7,
+      optime: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+      optimeDurable: { ts: Timestamp({ t: 1744154348, i: 1 }), t: Long('-1') },
+      optimeDate: ISODate('2025-04-08T23:19:08.000Z'),
+      optimeDurableDate: ISODate('2025-04-08T23:19:08.000Z'),
+      lastAppliedWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+      lastDurableWallTime: ISODate('2025-04-08T23:19:08.497Z'),
+      lastHeartbeat: ISODate('2025-04-08T23:19:15.575Z'),
+      lastHeartbeatRecv: ISODate('2025-04-08T23:19:15.680Z'),
+      pingMs: Long('0'),
+      lastHeartbeatMessage: '',
+      syncSourceHost: '',
+      syncSourceId: -1,
+      infoMessage: '',
+      configVersion: 1,
+      configTerm: 0
+    }
+  ],
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1744154348, i: 1 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: Long('0')
+    }
+  },
+  operationTime: Timestamp({ t: 1744154348, i: 1 })
+}
+
+[Sharding]
+Query 1: Routed to shard1
+[direct: mongos] productService> db.products.find({ category: "electronics" }).explain("executionStats")
+... 
+{
+  queryPlanner: {
+    mongosPlannerVersion: 1,
+    winningPlan: {
+      stage: 'SINGLE_SHARD',
+      shards: [
+        {
+          shardName: 'shardReplSet2',
+          connectionString: 'shardReplSet2/shard2:27019',
+          serverInfo: {
+            host: '0de17e8c4d4f',
+            port: 27019,
+            version: '6.0.21',
+            gitVersion: 'be2ab84df04dd10fcecc8efd8f4e0c5e7640dec8'
+          },
+          namespace: 'productService.products',
+          indexFilterSet: false,
+          parsedQuery: { category: { '$eq': 'electronics' } },
+          queryHash: '29745969',
+          planCacheKey: '84E42C90',
+          maxIndexedOrSolutionsReached: false,
+          maxIndexedAndSolutionsReached: false,
+          maxScansToExplodeReached: false,
+          winningPlan: {
+            stage: 'FETCH',
+            inputStage: {
+              stage: 'IXSCAN',
+              keyPattern: { category: 1 },
+              indexName: 'category_1',
+              isMultiKey: false,
+              multiKeyPaths: { category: [] },
+              isUnique: false,
+              isSparse: false,
+              isPartial: false,
+              indexVersion: 2,
+              direction: 'forward',
+              indexBounds: { category: [ '["electronics", "electronics"]' ] }
+            }
+          },
+          rejectedPlans: []
+        }
+      ]
+    }
+  },
+  executionStats: {
+    nReturned: 1,
+    executionTimeMillis: 3,
+    totalKeysExamined: 1,
+    totalDocsExamined: 1,
+    executionStages: {
+      stage: 'SINGLE_SHARD',
+      nReturned: 1,
+      executionTimeMillis: 3,
+      totalKeysExamined: 1,
+      totalDocsExamined: 1,
+      totalChildMillis: Long('1'),
+      shards: [
+        {
+          shardName: 'shardReplSet2',
+          executionSuccess: true,
+          nReturned: 1,
+          executionTimeMillis: 1,
+          totalKeysExamined: 1,
+          totalDocsExamined: 1,
+          executionStages: {
+            stage: 'FETCH',
+            nReturned: 1,
+            executionTimeMillisEstimate: 0,
+            works: 2,
+            advanced: 1,
+            needTime: 0,
+            needYield: 0,
+            saveState: 0,
+            restoreState: 0,
+            isEOF: 1,
+            docsExamined: 1,
+            alreadyHasObj: 0,
+            inputStage: {
+              stage: 'IXSCAN',
+              nReturned: 1,
+              executionTimeMillisEstimate: 0,
+              works: 2,
+              advanced: 1,
+              needTime: 0,
+              needYield: 0,
+              saveState: 0,
+              restoreState: 0,
+              isEOF: 1,
+              keyPattern: { category: 1 },
+              indexName: 'category_1',
+              isMultiKey: false,
+              multiKeyPaths: { category: [] },
+              isUnique: false,
+              isSparse: false,
+              isPartial: false,
+              indexVersion: 2,
+              direction: 'forward',
+              indexBounds: { category: [ '["electronics", "electronics"]' ] },
+              keysExamined: 1,
+              seeks: 1,
+              dupsTested: 0,
+              dupsDropped: 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  serverInfo: {
+    host: '20bbe885f870',
+    port: 27017,
+    version: '6.0.21',
+    gitVersion: 'be2ab84df04dd10fcecc8efd8f4e0c5e7640dec8'
+  },
+  serverParameters: {
+    internalQueryFacetBufferSizeBytes: 104857600,
+    internalQueryFacetMaxOutputDocSizeBytes: 104857600,
+    internalLookupStageIntermediateDocumentMaxSizeBytes: 104857600,
+    internalDocumentSourceGroupMaxMemoryBytes: 104857600,
+    internalQueryMaxBlockingSortMemoryUsageBytes: 104857600,
+    internalQueryProhibitBlockingMergeOnMongoS: 0,
+    internalQueryMaxAddToSetBytes: 104857600,
+    internalDocumentSourceSetWindowFieldsMaxMemoryBytes: 104857600
+  },
+  command: {
+    find: 'products',
+    filter: { category: 'electronics' },
+    lsid: { id: UUID('8cc15423-cf9c-4233-9940-1845b89c4893') },
+    '$clusterTime': {
+      clusterTime: Timestamp({ t: 1744192962, i: 5 }),
+      signature: {
+        hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+        keyId: 0
+      }
+    },
+    '$db': 'productService'
+  },
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1744192965, i: 2 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: Long('0')
+    }
+  },
+  operationTime: Timestamp({ t: 1744192962, i: 5 })
+}
+
+Query 2: Routed to shard2
+[direct: mongos] productService> db.products.find({ category: "clothing" }).explain("executionStats")
+... 
+{
+  queryPlanner: {
+    mongosPlannerVersion: 1,
+    winningPlan: {
+      stage: 'SINGLE_SHARD',
+      shards: [
+        {
+          shardName: 'shardReplSet2',
+          connectionString: 'shardReplSet2/shard2:27019',
+          serverInfo: {
+            host: '0de17e8c4d4f',
+            port: 27019,
+            version: '6.0.21',
+            gitVersion: 'be2ab84df04dd10fcecc8efd8f4e0c5e7640dec8'
+          },
+          namespace: 'productService.products',
+          indexFilterSet: false,
+          parsedQuery: { category: { '$eq': 'clothing' } },
+          queryHash: '29745969',
+          planCacheKey: '84E42C90',
+          maxIndexedOrSolutionsReached: false,
+          maxIndexedAndSolutionsReached: false,
+          maxScansToExplodeReached: false,
+          winningPlan: {
+            stage: 'FETCH',
+            inputStage: {
+              stage: 'IXSCAN',
+              keyPattern: { category: 1 },
+              indexName: 'category_1',
+              isMultiKey: false,
+              multiKeyPaths: { category: [] },
+              isUnique: false,
+              isSparse: false,
+              isPartial: false,
+              indexVersion: 2,
+              direction: 'forward',
+              indexBounds: { category: [ '["clothing", "clothing"]' ] }
+            }
+          },
+          rejectedPlans: []
+        }
+      ]
+    }
+  },
+  executionStats: {
+    nReturned: 1,
+    executionTimeMillis: 1,
+    totalKeysExamined: 1,
+    totalDocsExamined: 1,
+    executionStages: {
+      stage: 'SINGLE_SHARD',
+      nReturned: 1,
+      executionTimeMillis: 1,
+      totalKeysExamined: 1,
+      totalDocsExamined: 1,
+      totalChildMillis: Long('0'),
+      shards: [
+        {
+          shardName: 'shardReplSet2',
+          executionSuccess: true,
+          nReturned: 1,
+          executionTimeMillis: 0,
+          totalKeysExamined: 1,
+          totalDocsExamined: 1,
+          executionStages: {
+            stage: 'FETCH',
+            nReturned: 1,
+            executionTimeMillisEstimate: 0,
+            works: 2,
+            advanced: 1,
+            needTime: 0,
+            needYield: 0,
+            saveState: 0,
+            restoreState: 0,
+            isEOF: 1,
+            docsExamined: 1,
+            alreadyHasObj: 0,
+            inputStage: {
+              stage: 'IXSCAN',
+              nReturned: 1,
+              executionTimeMillisEstimate: 0,
+              works: 2,
+              advanced: 1,
+              needTime: 0,
+              needYield: 0,
+              saveState: 0,
+              restoreState: 0,
+              isEOF: 1,
+              keyPattern: { category: 1 },
+              indexName: 'category_1',
+              isMultiKey: false,
+              multiKeyPaths: { category: [] },
+              isUnique: false,
+              isSparse: false,
+              isPartial: false,
+              indexVersion: 2,
+              direction: 'forward',
+              indexBounds: { category: [ '["clothing", "clothing"]' ] },
+              keysExamined: 1,
+              seeks: 1,
+              dupsTested: 0,
+              dupsDropped: 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  serverInfo: {
+    host: '20bbe885f870',
+    port: 27017,
+    version: '6.0.21',
+    gitVersion: 'be2ab84df04dd10fcecc8efd8f4e0c5e7640dec8'
+  },
+  serverParameters: {
+    internalQueryFacetBufferSizeBytes: 104857600,
+    internalQueryFacetMaxOutputDocSizeBytes: 104857600,
+    internalLookupStageIntermediateDocumentMaxSizeBytes: 104857600,
+    internalDocumentSourceGroupMaxMemoryBytes: 104857600,
+    internalQueryMaxBlockingSortMemoryUsageBytes: 104857600,
+    internalQueryProhibitBlockingMergeOnMongoS: 0,
+    internalQueryMaxAddToSetBytes: 104857600,
+    internalDocumentSourceSetWindowFieldsMaxMemoryBytes: 104857600
+  },
+  command: {
+    find: 'products',
+    filter: { category: 'clothing' },
+    lsid: { id: UUID('8cc15423-cf9c-4233-9940-1845b89c4893') },
+    '$clusterTime': {
+      clusterTime: Timestamp({ t: 1744192965, i: 2 }),
+      signature: {
+        hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+        keyId: 0
+      }
+    },
+    '$db': 'productService'
+  },
+  ok: 1,
+  '$clusterTime': {
+    clusterTime: Timestamp({ t: 1744193008, i: 1 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: Long('0')
+    }
+  },
+  operationTime: Timestamp({ t: 1744193008, i: 1 })
+}
+
+[Caching]
+GET /product/123 – cache hit
+GET /product/456 – cache miss and stored
+2025-04-09 09:52:36 Product service on port 3002
+2025-04-09 09:52:42 CACHE MISS for product:2
+2025-04-09 09:52:44 CACHE MISS for product:1
+2025-04-09 09:52:47 CACHE HIT for product:2
