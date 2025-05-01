@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  order:
+    build:
+      context: ./order
+    container_name: order
+    volumes:
+      - ./order:/app/order
+    ports:
+      - "3000:3000"
+    networks:
+      - backend
+  
+  payment:
+    build:
+      context: ./payment
+    container_name: payment
+    volumes:
+      - ./payment:/app/payment
+    ports:
+      - "3001:3001"
+    networks:
+      - backend
+
+  product:
+    build:
+      context: ./product
+    container_name: product
+    volumes:
+      - ./product:/app/product
+    ports:
+      - "3002:3002"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge

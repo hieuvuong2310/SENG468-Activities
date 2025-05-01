@@ -11,105 +11,168 @@ let channel, connection;
 
 const INVENTORY_QUEUE = "inventory_queue";
 const EXCHANGE_NAME = "stock_exchange";
-const ROUTING_KEY = "stock.update";
+const CART_UPDATE_QUEUE = "cart_updates";
 const RABBITMQ_URL = "amqp://rabbitmq";
 
-// In-memory availability cache
-const availabilityCache = {};
+const circuitBreaker = {
+  state: "CLOSED", // CLOSED → OPEN → HALF-OPEN → CLOSED
+  failureCount: 0,
+  successCount: 0,
+  threshold: 3, // Number of failures before opening the circuit
+  resetTimeout: 10000, // Time to wait before transitioning to HALF-OPEN
+  halfOpenTestCount: 2, // Number of successful calls to return to CLOSED
+  lastFailureTime: null, // Track last failure
+};
 
-// Function to connect to RabbitMQ
-async function connectRabbitMQ() {
-  let retries = 3;
-  while (retries > 0) {
-    try {
-      console.log("Connecting to RabbitMQ...");
-      connection = await amqp.connect(RABBITMQ_URL);
-      channel = await connection.createChannel();
+// Function to update Circuit Breaker state
+function updateCircuitBreaker(success) {
+  if (success) {
+    circuitBreaker.successCount++;
+    circuitBreaker.failureCount = 0;
 
-      await channel.assertQueue(INVENTORY_QUEUE, { durable: true });
-      await channel.assertExchange(EXCHANGE_NAME, "topic", { durable: false });
+    if (
+      circuitBreaker.state === "HALF-OPEN" &&
+      circuitBreaker.successCount >= circuitBreaker.halfOpenTestCount
+    ) {
+      circuitBreaker.state = "CLOSED";
+      console.log("✅ Circuit Breaker transitioned to CLOSED state.");
+    }
+  } else {
+    circuitBreaker.failureCount++;
 
-      console.log("Cart Service connected to RabbitMQ.");
+    if (circuitBreaker.failureCount >= circuitBreaker.threshold) {
+      circuitBreaker.state = "OPEN";
+      circuitBreaker.lastFailureTime = Date.now();
+      console.log("⛔ Circuit Breaker transitioned to OPEN state.");
 
-      // Subscribe to stock updates
-      const q = await channel.assertQueue("", { exclusive: true });
-      await channel.bindQueue(q.queue, EXCHANGE_NAME, ROUTING_KEY);
-
-      channel.consume(
-        q.queue,
-        (msg) => {
-          if (msg !== null) {
-            const { item_id, available } = JSON.parse(msg.content.toString());
-            availabilityCache[item_id] = available;
-            console.log(
-              `🔄 Stock updated: ${item_id} → ${
-                available ? "In Stock" : "Out of Stock"
-              }`
-            );
-          }
-        },
-        { noAck: true }
-      );
-
-      return;
-    } catch (error) {
-      console.error("RabbitMQ connection error:", error);
-      retries -= 1;
-      console.log(`Retries left: ${retries}`);
-      if (retries === 0) {
-        console.error(
-          "Failed to connect to RabbitMQ after multiple attempts."
-        );
-        process.exit(1);
-      }
-      await new Promise((res) => setTimeout(res, 5000)); // Wait before retrying
+      setTimeout(() => {
+        circuitBreaker.state = "HALF-OPEN";
+        circuitBreaker.successCount = 0;
+        console.log("🔄 Circuit Breaker transitioned to HALF-OPEN state.");
+      }, circuitBreaker.resetTimeout);
     }
   }
 }
 
-// Add to Cart Route
+// Function to check if Circuit Breaker allows requests
+function canProceed() {
+  if (circuitBreaker.state === "OPEN") {
+    const timeSinceLastFailure = Date.now() - circuitBreaker.lastFailureTime;
+    if (timeSinceLastFailure >= circuitBreaker.resetTimeout) {
+      circuitBreaker.state = "HALF-OPEN";
+      console.log(
+        "🔄 Circuit Breaker transitioning to HALF-OPEN state for testing."
+      );
+      return true;
+    }
+    return false; // Still in OPEN state
+  }
+  return true; // Allowed in CLOSED or HALF-OPEN
+}
+
+// RabbitMQ connection function
+async function connectRabbitMQ(retries = 3) {
+  while (retries > 0) {
+    try {
+      console.log("🔄 Connecting to RabbitMQ...");
+      connection = await amqp.connect(RABBITMQ_URL);
+      channel = await connection.createChannel();
+      await channel.assertQueue(INVENTORY_QUEUE, { durable: true });
+      await channel.assertQueue(CART_UPDATE_QUEUE, { durable: true });
+
+      console.log("✅ Connected to RabbitMQ!");
+
+      channel.consume(CART_UPDATE_QUEUE, (msg) => {
+        if (msg) {
+          const response = JSON.parse(msg.content.toString());
+          console.log(`📦 Order Confirmation Received:`, response);
+
+          if (orderResponses[response.itemId]) {
+            orderResponses[response.itemId](
+              response.success,
+              response.remaining_stock
+            );
+            delete orderResponses[response.itemId];
+          }
+          channel.ack(msg);
+        }
+      });
+
+      return;
+    } catch (error) {
+      console.error("❌ RabbitMQ Connection Error:", error);
+      retries -= 1;
+      if (retries === 0) {
+        console.error("Failed to connect to RabbitMQ.");
+        process.exit(1);
+      }
+      await new Promise((res) => setTimeout(res, 5000));
+    }
+  }
+}
+
+// Order storage
+const orderResponses = {};
+
 app.post("/add-to-cart", async (req, res) => {
   const { itemId, quantity } = req.body;
 
-  if (!itemId || quantity <= 0) {
-    return res.status(400).json({ message: "Invalid item or quantity" });
+  if (!channel) {
+    return res
+      .status(500)
+      .json({ message: "❌ RabbitMQ channel not available!" });
+  }
+
+  if (!canProceed()) {
+    console.log("⛔ Circuit Breaker is OPEN - rejecting request.");
+    return res
+      .status(503)
+      .json({ message: "⛔ Service unavailable due to repeated failures." });
   }
 
   try {
-    console.log("🛒 Adding item to cart:", itemId);
+    const order = { itemId, quantity };
+    channel.sendToQueue(INVENTORY_QUEUE, Buffer.from(JSON.stringify(order)), {
+      persistent: true,
+    });
 
-    // Check availability from cache first
-    if (availabilityCache[itemId] === false) {
-      return res.status(400).json({ message: "Item is out of stock" });
-    }
+    console.log(`📤 Sent order request: ${JSON.stringify(order)}`);
 
-    // Send message to Inventory Service via RabbitMQ
-    const message = JSON.stringify({ item_id: itemId, quantity });
-    channel.sendToQueue(INVENTORY_QUEUE, Buffer.from(message));
-    console.log("📤 Sent message to Inventory Service:", message);
+    let handled = false;
+    orderResponses[itemId] = (success, remaining_stock) => {
+      if (handled) return;
+      handled = true;
+      updateCircuitBreaker(success);
+      if (success) {
+        res.json({
+          message: `✅ Order confirmed for ${itemId}`,
+          remaining_stock,
+        });
+      } else {
+        res
+          .status(400)
+          .json({ message: `❌ Order failed for ${itemId}`, remaining_stock });
+      }
+    };
 
-    // Check availability from Inventory Service
-    const response = await axios.get(
-      `http://inventory-service:4000/check-availability`,
-      { params: { itemId } }
-    );
-
-    if (response.data.available) {
-      cart.push({ itemId, quantity });
-      return res.status(200).json({ message: "Item added to cart", cart });
-    } else {
-      return res.status(400).json({ message: "Item is out of stock" });
-    }
+    setTimeout(() => {
+      if (!handled) {
+        handled = true;
+        updateCircuitBreaker(false);
+        res
+          .status(500)
+          .json({ message: `⏳ Timeout: No response received for ${itemId}` });
+        delete orderResponses[itemId];
+      }
+    }, 5000);
   } catch (error) {
-    console.error("Error:", error.message);
-    return res
-      .status(500)
-      .json({ message: "Error communicating with Inventory Service" });
+    updateCircuitBreaker(false);
+    console.error("❌ Error processing request:", error);
+    res.status(500).json({ message: "❌ Internal Server Error" });
   }
 });
 
-// Start server and connect to RabbitMQ
 app.listen(PORT, async () => {
-  console.log(`Cart Service running on port ${PORT}`);
+  console.log(`🚀 Cart Service running on port ${PORT}`);
   await connectRabbitMQ();
 });
